@@ -77,6 +77,7 @@ curl -X POST http://localhost:8080/shorten \
 go-url-shortener/
 ├── api/               # gRPC & gateway proto definitions
 ├── cmd/               # Main gRPC and REST entrypoints
+├── docs/              # Architecture diagrams
 ├── grpc/              # gRPC server logic
 ├── model/             # SQLite DB access layer
 ```
