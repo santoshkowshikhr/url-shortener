@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package shortener;
+
+option go_package = "urlshortener/api;api";
+
+import "google/api/annotations.proto";
+
+message ShortenerRequest {
+    string long_url = 1;
+    string custom_alias = 2;
+    int32 expire_in_days = 3;
+}
+
+message ShortenerResponse {
+    string short_url = 1;
+}
+
+message RedirectRequest {
+    string short_url = 1;
+}
+
+message RedirectResponse {
+    string long_url = 1;
+}
+
+service ShortenerService {
+    rpc CreateShortener (ShortenerRequest) returns (ShortenerResponse) {
+        option (google.api.http) = {
+            post: "/shorten"
+            body: "*"
+        };
+    }
+    rpc RedirectShortener (RedirectRequest) returns (RedirectResponse) {
+        option (google.api.http) = {
+            get: "/{short_url}"
+        };
+    }
+}
