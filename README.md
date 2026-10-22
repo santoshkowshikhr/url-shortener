@@ -88,6 +88,9 @@ go test ./...
 ```
 
 ### 📊 Stress Results Summary:
+
+The recorded `hey` run below returned HTTP 409 for all 100,000 requests. Its 8,145.3396 requests/second measures conflict responses; it does not establish successful URL-creation throughput.
+
 ```bash
 hey -n 100000 -c 5000 -m POST \
   -H "Content-Type: application/json" \
@@ -140,6 +143,9 @@ Status code distribution:
 ```
 
 or run with k6
+
+The recorded k6 run below reports 20.56% failed HTTP requests (20,561 of 100,000). Investigate those failures before using this result as a capacity estimate.
+
 ```bash
 k6 run --vus 1000 --iterations 100000 script.js
 
