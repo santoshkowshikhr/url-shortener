@@ -46,10 +46,12 @@ git clone https://github.com/santoshkowshikhr/url-shortener.git
 cd url-shortener
 ```
 
-### 2. Start Redis (optional for caching)
+### 2. Start Redis
 ```bash
 docker run -p 6379:6379 redis
 ```
+
+The current server startup calls `InitRedis`, which exits if Redis cannot be reached. During redirect requests, an absent client or a failed cache operation falls back to SQLite.
 
 ### 3. Run the gRPC and REST Servers
 ```bash
@@ -59,6 +61,14 @@ go run cmd/gRPC/main.go
 # REST gateway (on :8080)
 go run cmd/REST/main.go
 ```
+
+### Cache retention and link expiry
+
+Redis stores JSON records at `short:v2:<code>` with `long_url` and an optional absolute `expire_at`. Each cache hit checks that deadline. A link is expired when the lookup time is equal to or later than its deadline, even if Redis still holds the record.
+
+Cache retention is at most five minutes, capped by the remaining link lifetime and rounded down to Redis's millisecond precision. Links with less than one millisecond remaining are not cached. Permanent links also have five-minute cache retention; they remain valid in SQLite after cache eviction. Cache misses, malformed records, and cache errors fall back to SQLite. Cache write errors do not fail a valid redirect.
+
+The v2 namespace ignores old `short:<code>` raw-URL entries without deleting them. An upgrade starts with a cold cache and can briefly increase SQLite reads. Old entries without a TTL remain in Redis until separately removed. API contracts and the SQLite schema are unchanged; older running binaries retain their previous redirect behavior until upgraded.
 
 ## 🔌 API Usage
 ### 🔹 Shorten a URL (REST)
@@ -82,9 +92,20 @@ go-url-shortener/
 ├── model/             # SQLite DB access layer
 ```
 
-### 🧪 Run Units Tests
+### 🧪 Run Unit Tests
+
+No Redis server is needed for tests. A go-redis process hook supplies cache responses and inspects the actual GET/SET arguments; it does not test Redis eviction or network behavior. SQLite tests use local test databases.
+
 ```bash
-go test ./...
+# Focused cache policy and redirect checks
+go test ./model ./grpc -run 'TestCache|TestGetCachedURL|TestRedirectShortener' -count=1
+
+# Demonstrate the two redirect regressions
+go test ./grpc -run 'TestRedirectShortener_(WithoutRedis|ExpiredWarmCache)$' -count=1 -v
+
+go test ./... -count=1
+go test -race ./... -count=1
+go vet ./...
 ```
 
 ### 📊 Stress Results Summary:
