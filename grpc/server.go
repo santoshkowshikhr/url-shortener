@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"fmt"
 	"go-api-server/api"
 	"go-api-server/model"
 	"log"
@@ -12,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -58,15 +58,12 @@ func (s *Server) CreateShortener(ctx context.Context, req *api.ShortenerRequest)
 }
 
 func (s *Server) RedirectShortener(ctx context.Context, req *api.RedirectRequest) (*api.RedirectResponse, error) {
-	// Check Redis cache first
-	if model.RDB == nil {
-		log.Println("Redis client not initialized")
-	}
-
-	key := fmt.Sprintf("short:%s", req.ShortUrl)
-	longURL, err := model.RDB.Get(ctx, key).Result()
+	longURL, err := model.GetCachedURL(ctx, req.ShortUrl)
 	if err == nil {
 		return &api.RedirectResponse{LongUrl: longURL}, nil
+	}
+	if err != redis.Nil {
+		log.Printf("Redis cache get failed: %v", err)
 	}
 
 	// If not found in cache → fallback to DB
@@ -75,18 +72,11 @@ func (s *Server) RedirectShortener(ctx context.Context, req *api.RedirectRequest
 		return nil, status.Errorf(codes.NotFound, "short code not found")
 	}
 
-	if expireAt != nil && time.Now().After(*expireAt) {
+	if expireAt != nil && !time.Now().Before(*expireAt) {
 		return nil, status.Errorf(codes.NotFound, "link has expired")
 	}
 
-	// Cache the result with TTL
-	var ttl time.Duration = 0
-	if expireAt != nil {
-		ttl = time.Until(*expireAt)
-	}
-
-	err = model.RDB.Set(ctx, key, longURL, ttl).Err()
-	if err != nil {
+	if err := model.CacheURL(ctx, req.ShortUrl, longURL, expireAt); err != nil {
 		log.Printf("Redis cache set failed: %v", err)
 	}
 
